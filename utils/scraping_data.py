@@ -12,16 +12,12 @@ HEADERS = {
 }
 
 def scrape_links(base_url, start_page=1, max_pages=None):
-    """
-    Scrape only book links from books.toscrape.com.
-    """
-    all_links = []  # List to collect links
+    all_links = []
     page = start_page
 
     while True:
         url = base_url.format(page)
         print(f"Scraping {url}")
-
         response = requests.get(url, headers=HEADERS)
 
         if response.status_code != 200:
@@ -43,7 +39,6 @@ def scrape_links(base_url, start_page=1, max_pages=None):
                 all_links.append(full_link)
 
         page += 1
-
         if max_pages and page > max_pages:
             print(f"Reached max_pages = {max_pages}. Stopping.")
             break
@@ -52,47 +47,68 @@ def scrape_links(base_url, start_page=1, max_pages=None):
 
 
 def scrap_data(links):
-    upc = []
-    all_images = []  # List to collect image URLs
+    upcs = []
+    all_images = []
     titles = []
-    desc = []
+    descs = []
     prices = []
     availability = []
-    rate = [] 
+    rates = []
 
     for link in links:
         response = requests.get(link, headers=HEADERS)
         
         if response.status_code != 200:
             print(f"Failed to fetch {link}")
-            continue  # skip this link if error
+            continue
 
         soup = BeautifulSoup(response.content, "html.parser")
-        upc = soup.find("div", attrs = {"class" : "col-sm-6 product_main"}).find("h1")
-        img_tag = soup.find('img')  # Now you have real soup object
 
+        title = soup.find("div", class_="col-sm-6 product_main").find("h1").text.strip()
+        titles.append(title)
+
+        description_tag = soup.find("meta", attrs={"name": "description"})
+        description = description_tag['content'].strip() if description_tag else "No description"
+        descs.append(description)
+
+        price_tag = soup.find("p", class_="price_color")
+        prices.append(price_tag.text.strip() if price_tag else "N/A")
+
+        avail_tag = soup.find("p", class_="instock availability")
+        availability.append(avail_tag.text.strip() if avail_tag else "N/A")
+
+        rating_tag = soup.find("p", class_="star-rating")
+        rating_class = rating_tag.get("class")[1] if rating_tag else "None"
+        rates.append(rating_class)
+
+        upc_tag = soup.find("table", class_="table table-striped").find("tr")
+        upcs.append(upc_tag.find("td").text if upc_tag else "N/A")
+
+        img_tag = soup.find('img')
         if img_tag:
-            img_src = img_tag.get('src')  # safer way
-            if img_src:
-                img_src = img_src.lstrip("../../")  # Clean the leading ../
-                full_img_url = "https://books.toscrape.com/" + img_src
-                all_images.append(full_img_url)
-                print(full_img_url)
+            img_src = img_tag.get('src').lstrip("../../")
+            full_img_url = "https://books.toscrape.com/" + img_src
+            all_images.append(full_img_url)
+        else:
+            all_images.append("No image")
 
-    return all_images, upc
+    df = pd.DataFrame({
+        "UPC": upcs,
+        "Title": titles,
+        "Description": descs,
+        "Price": prices,
+        "Availability": availability,
+        "Rating": rates,
+        "Image": all_images,
+        "Product Link": links
+    })
 
-# --------------------
-# USE THE FUNCTION
-# --------------------
+    return df
 
-base_url = "https://books.toscrape.com/catalogue/page-{}.html"
+# base_url = "https://books.toscrape.com/catalogue/page-{}.html"
 
-book_links = scrape_links(base_url, max_pages=2)
+# book_links = scrape_links(base_url, max_pages=2)
+# book_data_df = scrap_data(book_links)
 
-image_links = scrap_data(book_links)
-print(image_links)
-
-# df = pd.DataFrame(book_links, columns=["Book Link"])
-# df.to_csv("book_links.csv", index=False)
-
-# print("Scraping completed and saved to book_links.csv!")
+# book_data_df.to_csv("data.csv", index=False)
+# print("Scraping complete! Data saved to book_data.csv.")
